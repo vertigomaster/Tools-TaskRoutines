@@ -7,6 +7,9 @@ There is now a distinction between the creation and launching of routines. New()
 
 Routines are passed around as IEnumerables (or as function delegates that return them)
 
+## And A Whole Lot More
+TODO: Finish the readme
+
 ## How?
 Coroutines have to be run on a GameObject, so we auto-instantiate an isolated manager they can run on.
 
