@@ -12,12 +12,12 @@ While not technically asynchronous, Coroutines enable a similar deferral of game
 - A wrapper for Unity Coroutines that allows for:
   - Starting, pausing, resuming, and stopping routines.
   - Chaining routines together with `.OnFinish()` for sequential execution.
-  - Delayed starts using `TaskRoutine.DelayedStart()`.
+  - Delayed starts using `TaskRoutine.DelayedStart()`. (Experimental)
   - Retry logic with `TaskRoutine.Retry()` for robust error handling.
   - Progress tracking and cancellation checks.
 - Supports `TaskRoutine.Start()` for immediate execution or `TaskRoutine.New()` for deferred creation.
 
-### 2. **TaskResult**
+### 2. **TaskResult** (Experimental)
 - Extends `TaskRoutine` to include return values.
 - Allows routines to return results while maintaining coroutine behavior.
 - Supports chaining with `.OnFinish()` and provides callbacks for result handling.
@@ -27,7 +27,7 @@ While not technically asynchronous, Coroutines enable a similar deferral of game
 - Automatically creates a singleton GameObject to host coroutines.
 - Provides internal state tracking for running, paused, resolved, and canceled routines.
 
-### 4. **TaskRoutine Instructions**
+### 4. **TaskRoutine-specific YieldInstructions**
 - Special yield instructions for advanced control:
   - `CancelTaskRoutine`: Explicitly cancels a routine.
   - `ResolveTaskRoutine`: Completes a routine early with success.
