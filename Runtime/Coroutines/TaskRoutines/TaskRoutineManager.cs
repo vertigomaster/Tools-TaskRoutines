@@ -1,6 +1,8 @@
-// Created By: "chomp" (https://forum.unity.com/members/chomp.29811/)
+// Originally Created By: "chomp" (https://forum.unity.com/members/chomp.29811/)
 // Found At: https://forum.unity.com/threads/a-more-flexible-coroutine-interface.94220/
-// Pasted/Edited by: Julian Noel
+// Edited and Updated by: Julian Noel (https://github.com/vertigomaster)
+
+/* Begin Legacy Description */
 
 /// TaskRoutineManager.cs
 ///
@@ -34,11 +36,13 @@
 /// with the internal TaskManager component attached. All coroutine dispatch
 /// for Tasks is done through this component.
 
+/* End Legacy Description */
+
 using System.Collections;
 
 using UnityEngine;
 
-using IDEK.Tools.Logging;
+// using IDEK.Tools.Logging;
 
 namespace IDEK.Tools.Coroutines.TaskRoutines
 {
@@ -125,7 +129,7 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
                         }
                         else if (e.Current is TaskRoutine yieldedTaskRoutine) //TODO: add some way to track who/where the taskroutine was built from
                         {
-                            ConsoleLog.LogError("Do not directly yield return TaskRoutines! It is too dangerous. Use .Await() " +
+                            Debug.LogError("[TaskRoutine] Do not directly yield return TaskRoutines! It is too dangerous. Use .Await() " +
                                 "on the routine beforehand to return a reliable yield instruction for it instead.");
                             ////TODO: wait for yielded taskroutine to complete ?
                             yield return e.Current;

@@ -38,7 +38,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using IDEK.Tools.Logging;
+// using IDEK.Tools.Logging;
 using UnityEngine;
 
 namespace IDEK.Tools.Coroutines.TaskRoutines
@@ -456,7 +456,7 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
                 }
                 else
                 {
-                    ConsoleLog.LogError("Broken TaskRoutine Chain Error! The routine that was chained after "
+                    Debug.LogError("[TaskRoutine] Broken TaskRoutine Chain Error! The routine that was chained after "
                         + $"this one ({this}) now no longer exists. Failed routines should be flagged as " 
                         + "Cancelled, not Destroyed/Disposed.");
                 }
