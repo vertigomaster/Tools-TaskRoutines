@@ -15,7 +15,7 @@ While not technically asynchronous, Coroutines enable a similar deferral of game
   - Starting, pausing, resuming, and stopping routines.
   - Chaining routines together with `.OnFinish()` for sequential execution.
     - OnFinish() callbacks can also get feedback on whether the TaskRoutine "chain" was cancelled before the callback executes, allowing you to automatically cancel the callback or to conditionally react to both cases within the callback.
-  - Delayed starts using `TaskRoutine.DelayedStart()`.
+  - Delayed starts using `TaskRoutine.DelayedStart()`. (Experimental)
   - Retry logic with `TaskRoutine.Retry()` for robust error handling.
   - Progress tracking and cancellation checks.
   - Integrating TaskRoutines back into traditional Coroutine workflows
@@ -31,7 +31,7 @@ While not technically asynchronous, Coroutines enable a similar deferral of game
     - Github's code viewer has a Symbols tab that shows everything we've added
   
 
-### 2. **TaskResult**
+### 2. **TaskResult** (Experimental)
 - Extends `TaskRoutine` to include return values.
 - Allows routines to return results while maintaining coroutine behavior.
 - Supports chaining with `.OnFinish()` and provides callbacks for result handling.
@@ -41,7 +41,7 @@ While not technically asynchronous, Coroutines enable a similar deferral of game
 - Automatically creates a singleton GameObject to host coroutines.
 - Provides internal state tracking for running, paused, resolved, and canceled routines.
 
-### 4. **TaskRoutine Instructions**
+### 4. **TaskRoutine-specific YieldInstructions**
 - Special yield instructions for advanced control:
   - `CancelTaskRoutine`: Explicitly cancels a routine.
   - `ResolveTaskRoutine`: Completes a routine early with success.
@@ -51,8 +51,6 @@ While not technically asynchronous, Coroutines enable a similar deferral of game
   - `OnAllFinish()`: Executes a callback or routine after all routines complete.
   - `CancelAll()`: Cancels all routines in a collection.
   - `AwaitAll()`: Waits for all routines to finish.
-
-
 
 ---
 
