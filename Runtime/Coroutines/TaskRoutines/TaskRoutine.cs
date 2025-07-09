@@ -161,6 +161,50 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
             }
         }
 
+        public static implicit operator bool(TaskRoutine routine)
+        {
+            return routine is { Destroyed: false };
+        }
+
+        public static TaskRoutine StartLoop(Action loopingAction) => NewLoop(loopingAction, true);
+        
+        public static TaskRoutine NewLoop(Action loopingAction, bool autoStart = false)
+        {
+            IEnumerable Local_LoopRoutine() { while (true) {
+                loopingAction();
+                yield return null;
+            }}
+            
+            return New(Local_LoopRoutine(), autoStart);
+        }
+
+        public static TaskRoutine StartLoop(Action loopingAction, float repeatDelay) => 
+            NewLoop(loopingAction, repeatDelay, true);
+
+        public static TaskRoutine NewLoop(Action loopingAction, float repeatDelay, bool autoStart = false)
+        {
+            IEnumerable Local_LoopRoutine() { while (true) {
+                loopingAction();
+                yield return new WaitForSeconds(repeatDelay);
+            }}
+
+            return New(Local_LoopRoutine(), autoStart);
+
+        }
+
+        public static TaskRoutine StartLoop(Action loopingAction, Func<object> yieldInstructionFactory) => 
+            NewLoop(loopingAction, yieldInstructionFactory, true);
+
+        public static TaskRoutine NewLoop(Action loopingAction, Func<object> yieldInstructionFactory, bool autoStart = false)
+        {
+            IEnumerable Local_LoopRoutine() { while (true) {
+                loopingAction();
+                yield return yieldInstructionFactory();
+            }}
+
+            return New(Local_LoopRoutine(), autoStart);
+        }
+
         #region Factories(?)
         /// <summary>
         /// More readable way to immediately start a TaskRoutine. <br/>
@@ -174,6 +218,8 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
 
         [Obsolete(IENUMERATOR_DEPRECATION_WARNING)]
         public static TaskRoutine Start(IEnumerator c) => New(c, true);
+
+        public static TaskRoutine Start(Action actionToLoop) => New(actionToLoop, true);
 
         /// <summary>
         /// More readable way to immediately start a TaskRoutine. <br/>
@@ -195,6 +241,7 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
         [Obsolete(IENUMERATOR_DEPRECATION_WARNING)]
         public static TaskResult<T> Start<T>(IEnumerator c, TaskResult<T> output) => New<T>(c, output, true);
 
+        
         /// <summary>
         /// Waits for delayTime seconds then starts the taskRoutine
         /// </summary>
@@ -848,5 +895,7 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
             return routines;
         }
         public static IEnumerable<TaskRoutine> StartAll(params TaskRoutine[] routines) => StartAll(routines);
+
+        
     }
 }
