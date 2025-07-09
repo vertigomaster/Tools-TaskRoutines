@@ -39,7 +39,7 @@
 /* End Legacy Description */
 
 using System.Collections;
-
+using JetBrains.Annotations;
 using UnityEngine;
 
 // using IDEK.Tools.Logging;
@@ -64,11 +64,21 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
             public delegate void FinishedHandler(bool wasCancelled);
             public event FinishedHandler FinishedEvent;
 
-            IEnumerator coroutine;
+            [CanBeNull]
+            public IEnumerable enumerableRoutine;
+            public IEnumerator coroutine;
 
             public TaskState(IEnumerator c)
             {
                 coroutine = c;
+            }
+
+            public TaskState(IEnumerable c)
+            {
+                //these are non-generic IEnumerables that do not implement IDisposable
+                // ReSharper disable once GenericEnumeratorNotDisposed
+                enumerableRoutine = c;
+                coroutine = c.GetEnumerator();
             }
 
             public void Pause() => Paused = true;
@@ -106,11 +116,12 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
                 Running = false;
                 HasNeverBeenStarted = false;
             }
-
+            
             private IEnumerator CallWrapper()
             {
                 yield return null;
-                IEnumerator e = coroutine;
+                // ReSharper disable once GenericEnumeratorNotDisposed
+                IEnumerator e = enumerableRoutine != null ? enumerableRoutine.GetEnumerator() : coroutine;
                 while(Running)
                 {
                     if(Paused)
@@ -155,6 +166,18 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
                 singleton = go.AddComponent<TaskRoutineManager>();
                 DontDestroyOnLoad(go);
             }
+            return new TaskState(coroutine);
+        }
+
+        public static TaskState CreateTask(IEnumerable coroutine)
+        {
+            if (singleton == null)
+            {
+                GameObject go = new("[TaskRoutineManager]");
+                singleton = go.AddComponent<TaskRoutineManager>();
+                DontDestroyOnLoad(go);
+            }
+
             return new TaskState(coroutine);
         }
     }

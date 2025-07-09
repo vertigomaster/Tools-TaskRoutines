@@ -38,6 +38,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using JetBrains.Annotations;
 // using IDEK.Tools.Logging;
 using UnityEngine;
 
@@ -48,6 +49,9 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
     /// naturally terminated.
     public class TaskRoutine
     {
+        protected const string IENUMERATOR_DEPRECATION_WARNING =
+            "When possible, use the IEnumerable overload instead of IEnumerator, " +
+            "as IEnumerable routines support restarts and looping.";
         /// <summary>
         /// Returns true if and only if the coroutine is running.  Paused tasks
         /// are considered to be running.
@@ -73,8 +77,16 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
         /// the coroutine was stopped with an explicit call to Stop().
         public delegate void FinishedHandlerWithCancelCheck(bool wasCancelled);
         public delegate TaskRoutine FinishedHandlerWithTaskResultAndCancelCheck(bool wasCancelled);
+
+        [Obsolete(IENUMERATOR_DEPRECATION_WARNING)]
         public delegate IEnumerator TaskRoutineFunc();
+
+        [Obsolete(IENUMERATOR_DEPRECATION_WARNING)]
         public delegate IEnumerator TaskResultFunc<T>(TaskResult<T> carriedResultRef);
+
+        public delegate IEnumerable TaskRoutineEnumerableFunc();
+
+        public delegate IEnumerable TaskResultEnumerableFunc<T>(TaskResult<T> carriedResultRef);
 
         /// Termination event.  Triggered when the coroutine completes execution.
         public event FinishedHandlerWithCancelCheck FinishedEvent;
@@ -101,10 +113,19 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
         /// Not guaranteed to be updated by all routines, but all at least provide a means
         /// </summary>
         public float Progress {  get; set; }
+        
+        // /// <summary>
+        // /// A <see cref="TaskRoutine"/>, if created from an <see cref="IEnumerable"/>, will store it here
+        // /// (and use it to create fresh <see cref="IEnumerator"/> instances for repeated runs).
+        // /// </summary>
+        // [CanBeNull]
+        // public IEnumerable Enumerable { get; protected set; }
 
         protected TaskRoutine()
         {
-            innerTaskState = new(null);
+            //the default is IEnumerator since it does not unexpectedly fill in expected data with null.
+            //user-facing methods should not use IEnumerator directly though.
+            innerTaskState = new(null as IEnumerator); //what a silly solution, lol
         }
 
         /// <summary>
@@ -113,11 +134,28 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
         /// If autoStart is true (default) the task is automatically started
         /// upon construction. 
         /// </summary>
+        [Obsolete(IENUMERATOR_DEPRECATION_WARNING)]
         public TaskRoutine(IEnumerator c, bool autoStart = true)
         {
             innerTaskState = TaskRoutineManager.CreateTask(c);
             innerTaskState.FinishedEvent += (wasCancelled) => FinishedEvent?.Invoke(wasCancelled);
             if(autoStart)
+            {
+                Start();
+            }
+        }
+
+        /// <summary>
+        /// Creates a new Task object for the given coroutine.
+        /// <br/>
+        /// If autoStart is true (default) the task is automatically started
+        /// upon construction. 
+        /// </summary>
+        public TaskRoutine(IEnumerable c, bool autoStart = true)
+        {
+            innerTaskState = TaskRoutineManager.CreateTask(c);
+            innerTaskState.FinishedEvent += (wasCancelled) => FinishedEvent?.Invoke(wasCancelled);
+            if (autoStart)
             {
                 Start();
             }
@@ -132,6 +170,9 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
         /// </summary>
         /// <param name="c"></param>
         /// <returns></returns>
+        public static TaskRoutine Start(IEnumerable c) => New(c, true);
+
+        [Obsolete(IENUMERATOR_DEPRECATION_WARNING)]
         public static TaskRoutine Start(IEnumerator c) => New(c, true);
 
         /// <summary>
@@ -142,8 +183,16 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
         /// </summary>
         /// <param name="c"></param>
         /// <returns></returns>
+        public static TaskRoutine Start(TaskRoutineEnumerableFunc func) => New(func, true);
+        [Obsolete(IENUMERATOR_DEPRECATION_WARNING)]
         public static TaskRoutine Start(TaskRoutineFunc func) => New(func, true);
+
+        public static TaskResult<T> Start<T>(TaskResultEnumerableFunc<T> func) => New<T>(func, true);
+        [Obsolete(IENUMERATOR_DEPRECATION_WARNING)]
         public static TaskResult<T> Start<T>(TaskResultFunc<T> func) => New<T>(func, true);
+
+        public static TaskResult<T> Start<T>(IEnumerable c, TaskResult<T> output) => New<T>(c, output, true);
+        [Obsolete(IENUMERATOR_DEPRECATION_WARNING)]
         public static TaskResult<T> Start<T>(IEnumerator c, TaskResult<T> output) => New<T>(c, output, true);
 
         /// <summary>
@@ -163,6 +212,11 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
         /// <param name="delayTime"></param>
         /// <param name="delayedRoutine"></param>
         /// <returns>The routine that will start after the delay</returns>
+        public static TaskRoutine DelayedStart(float delayTime, IEnumerable delayedRoutine)
+        {
+            return DelayedStart(delayTime, New(delayedRoutine));
+        }
+        [Obsolete(IENUMERATOR_DEPRECATION_WARNING)]
         public static TaskRoutine DelayedStart(float delayTime, IEnumerator delayedRoutine)
         {
             return DelayedStart(delayTime, New(delayedRoutine));
@@ -179,31 +233,63 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
             return TaskRoutine.Delay(delayTime).OnFinish(delayedTask);
         }
 
-        //Added for consistency with New<T>(Func<TaskResult<T>, IEnumerator> func, bool autoStart)
+        //Added for consistency with New<T>(Func<TaskResult<T>, IEnumerable> func, bool autoStart)
+        public static TaskRoutine New(IEnumerable c, bool autoStart = false) => new TaskRoutine(c, autoStart);
+        [Obsolete(IENUMERATOR_DEPRECATION_WARNING)]
         public static TaskRoutine New(IEnumerator c, bool autoStart = false) => new TaskRoutine(c, autoStart);
-
-        //Added for consistency with New<T>(Func<TaskResult<T>, IEnumerator> func, bool autoStart)
+        
+        //Added for consistency with New<T>(Func<TaskResult<T>, IEnumerable> func, bool autoStart)
+        public static TaskRoutine New(TaskRoutineEnumerableFunc func, bool autoStart = false) =>
+            new TaskRoutine(func?.Invoke(), autoStart);
+        [Obsolete(IENUMERATOR_DEPRECATION_WARNING)]
         public static TaskRoutine New(TaskRoutineFunc func, bool autoStart = false) => new TaskRoutine(func?.Invoke(), autoStart);
+        
         public static TaskRoutine New(Action action, bool autoStart = false)
         {
             return New(WrapperFunc, autoStart);
-            IEnumerator WrapperFunc()
+            IEnumerable WrapperFunc()
             {
                 action?.Invoke();
                 yield return null;
             }
         }
 
+        public static TaskResult<T> New<T>(TaskResultEnumerableFunc<T> func, bool autoStart = false)
+        {
+            TaskResult<T> result = new(); //generate result object
+            result.routine =
+                new TaskRoutine(func?.Invoke(result), autoStart); //set up and connect taskroutine that uses it
+            return result;
+        }
+        [Obsolete(IENUMERATOR_DEPRECATION_WARNING)]
         public static TaskResult<T> New<T>(TaskResultFunc<T> func, bool autoStart = false)
         {
             TaskResult<T> result = new(); //generate result object
-            result.routine = new TaskRoutine(func?.Invoke(result), autoStart); //set up and connect taskroutine that uses it
+            result.routine =
+                new TaskRoutine(func?.Invoke(result), autoStart); //set up and connect taskroutine that uses it
             return result;
         }
 
+        public static TaskResult<T> New<T>(IEnumerable c, TaskResult<T> output, bool autoStart = false)
+        {
+            if (output.routine != null)
+            {
+                //can't use a TaskResult<T> that's already "married" to another routine.
+                throw new ArgumentException($"Cannot pass in \"married\" {nameof(TaskResult<T>)} {nameof(output)} " +
+                    $"(one that already has already set an associated {nameof(TaskRoutine)}). \n" +
+                    $"Unless you really need to pass in an existing {nameof(TaskResult<T>)}, it's recommended you " +
+                    $"instead use the overload {nameof(TaskResult<T>)} New<{nameof(T)}>{nameof(Func<TaskResult<T>, IEnumerable>)} " +
+                    $"func, bool autoStart) or the respective TaskRountine.Start() overload instead.");
+            }
+
+            //set up and connect taskroutine that uses it
+            output.routine = new TaskRoutine(c, autoStart);
+            return output;
+        }
+        [Obsolete(IENUMERATOR_DEPRECATION_WARNING)]
         public static TaskResult<T> New<T>(IEnumerator c, TaskResult<T> output, bool autoStart = false)
         {
-            if(output.routine != null)
+            if (output.routine != null)
             {
                 //can't use a TaskResult<T> that's already "married" to another routine.
                 throw new ArgumentException($"Cannot pass in \"married\" {nameof(TaskResult<T>)} {nameof(output)} " +
@@ -217,6 +303,8 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
             output.routine = new TaskRoutine(c, autoStart);
             return output;
         }
+
+        
         #endregion
 
         /// <summary>
@@ -233,17 +321,25 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
         /// <param name="emergencyStopCondition">If this ever returns true, any remaining attempts are ignored and the operation is 
         /// canceled that frame. Useful for breaking ties with a lost cause.</param>
         /// <returns></returns>
-        public static TaskRoutine Retry(Func<TaskRoutine> routineCaller, int maxAttempts, Action<int> onAttemptFailureCallback=null, Func<bool> emergencyStopCondition = null)
+        public static TaskRoutine Retry(
+            Func<TaskRoutine> routineCaller, 
+            int maxAttempts, 
+            Action<int> onAttemptFailureCallback=null, 
+            Func<bool> emergencyStopCondition = null)
         {
             return Start(TryRoutine_Internal(routineCaller, maxAttempts, onAttemptFailureCallback, emergencyStopCondition));
         }
         
-        protected static IEnumerator TryRoutine_Internal(Func<TaskRoutine> routineCaller, int maxAttempts, Action<int> onAttemptFailureCallback = null, Func<bool> emergencyStopCondition = null)
+        protected static IEnumerable TryRoutine_Internal(
+            Func<TaskRoutine> routineCaller, 
+            int maxAttempts, 
+            Action<int> onAttemptFailureCallback = null, 
+            Func<bool> earlyStopCondition = null)
         {
             TaskRoutine latestRoutine = null;
             bool successfullyCompleted = false;
             
-            for (int remainingAttempts = maxAttempts; remainingAttempts > 0 && emergencyStopCondition?.Invoke() != false; remainingAttempts--)
+            for (int remAttempts = maxAttempts; remAttempts > 0 && earlyStopCondition?.Invoke() != false; remAttempts--)
             {
                 latestRoutine = routineCaller();
                 
@@ -257,7 +353,7 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
                 }
                 else
                 {
-                    onAttemptFailureCallback?.Invoke(remainingAttempts);
+                    onAttemptFailureCallback?.Invoke(remAttempts);
                 }
             }
 
@@ -276,18 +372,16 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
         /// <returns></returns>
         public static bool TryCancel(TaskRoutine routineRef, string debugMessage = "")
         {
-            if(routineRef != null && routineRef.IsRunning)
+            if (routineRef is not { IsRunning: true }) return false;
+            
+            if(debugMessage.Length > 0)
             {
-                if(debugMessage.Length > 0)
-                {
-                    Debug.LogWarning("[TaskRoutine.TryCancel()] " + debugMessage);
-                }
-
-                routineRef.Cancel();
-                return true;
+                Debug.LogWarning("[TaskRoutine.TryCancel()] " + debugMessage);
             }
 
-            return false;
+            routineRef.Cancel();
+            return true;
+
         }
 
         /// Begins execution of the coroutine
@@ -297,11 +391,18 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
             return this;
         }
 
-        [Obsolete("Does not currently work super well, but will in an upcoming release.")]
         public void Restart()
         {
-            innerTaskState.Cancel();
-            innerTaskState.Start();
+            if (innerTaskState.enumerableRoutine == null)
+            {
+                Debug.LogError("[TaskRoutine] A TaskRoutine need to be defined using an IEnumerable " +
+                    "(as opposed to an IEnumerator) in order to repeatedly execute (like what Restart() does).");
+                return;
+            }
+            
+            // innerTaskState.Cancel();
+            // innerTaskState.Start();
+            innerTaskState.Restart();
         }
 
         /// <summary> Prematurely finishes execution of the coroutine at its next yield WITHOUT counting as a cancellation.</summary>
@@ -362,41 +463,6 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
 
             return this;
         }
-
-        /// <summary>
-        /// Runs the given action (not a routine) after the taskroutine finishes. Returns the taskRoutine that called this function.
-        /// </summary>
-        /// <param name="callback"></param>
-        /// <param name="stillRunOnCancel"></param>
-        /// <returns></returns>
-        // public TaskRoutine OnFinish(FinishedHandlerWithTaskResultAndCancelCheck callback, bool stillRunOnCancel = false)
-        // {
-        //     // TaskRoutine;
-
-        //     if(IsFinished(stillRunOnCancel))
-        //     {
-        //         if(callback == null) return TaskRoutine.Resolved;
-
-        //         return callback.Invoke(IsCancelled);
-        //     }
-        //     else
-        //     {
-        //         FinishedEvent += OnceCallback;
-
-        //         void OnceCallback(bool wasCancelled)
-        //         {
-        //             if(stillRunOnCancel || !wasCancelled)
-        //             {
-        //                 if(callback == null) return TaskRoutine.Resolved;
-
-        //                 callback?.Invoke(wasCancelled);
-        //             }
-        //             FinishedEvent -= OnceCallback;
-        //         }
-        //     }
-
-        //     return this;
-        // }
 
         /// <summary>
         /// Runs the given action (not a routine) after the taskroutine finishes. Returns the taskRoutine that called this function. <br/>
@@ -483,6 +549,11 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
         /// <param name="nextRoutine"></param>
         /// <param name="stillRunOnCancel"></param>
         /// <returns>The <see cref="TaskRoutine"/> wrapping the given function, for convenience</returns>
+        public TaskRoutine OnFinish(TaskRoutineEnumerableFunc routineFunc, bool stillRunOnCancel = false)
+        {
+            return OnFinish(New(routineFunc, false));
+        }
+        [Obsolete(IENUMERATOR_DEPRECATION_WARNING)]
         public TaskRoutine OnFinish(TaskRoutineFunc routineFunc, bool stillRunOnCancel = false)
         {
             return OnFinish(New(routineFunc, false));
@@ -491,9 +562,14 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
         /// <summary>
         /// Use to chain <see cref="TaskResult{T}"/>s together!
         /// </summary>
-        /// <param name="nextRoutineWithResult"></param>
+        /// <param name="func"></param>
         /// <param name="stillRunOnCancel"></param>
         /// <returns>The same <see cref="TaskResult{T}"/> you inputted, for convenience</returns>
+        public TaskResult<T> OnFinish<T>(TaskResultEnumerableFunc<T> func, bool stillRunOnCancel = false)
+        {
+            return OnFinish(New(func), stillRunOnCancel);
+        }
+        [Obsolete(IENUMERATOR_DEPRECATION_WARNING)]
         public TaskResult<T> OnFinish<T>(TaskResultFunc<T> func, bool stillRunOnCancel = false)
         {
             return OnFinish(New(func), stillRunOnCancel);
@@ -531,13 +607,10 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
                 //first pass quickly checks to see if this whole operation is even valid
                 foreach (TaskRoutine routine in routines)
                 {
-                    if (routine.IsCancelled && !stillRunOnAnyCancel)
-                    {
-                        //aborts whole process to avoid massive pointless overhead and short-circuits.
-                        //all these "on finish" functions return the given nextRoutine out of principle.
-                        //Retaining for consistency.
-                        return nextRoutine;
-                    }
+                    //aborts whole process to avoid massive pointless overhead and short-circuits.
+                    //all these "on finish" functions return the given nextRoutine out of principle.
+                    //Retaining for consistency.
+                    if (routine.IsCancelled) return nextRoutine;
                 }
             }
 
@@ -710,7 +783,7 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
         protected static TaskRoutine Yield(Func<object> yieldInstructionFactory)
         {
             return TaskRoutine.Start(_WaitForGameObjectInvokeRoutine());
-            IEnumerator _WaitForGameObjectInvokeRoutine()
+            IEnumerable _WaitForGameObjectInvokeRoutine()
             {
                 yield return yieldInstructionFactory();
             }
@@ -731,7 +804,8 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
         protected static TaskRoutine Wait(Func<object> yieldInstructionFactory, Action yieldedAction)
         {
             return TaskRoutine.Start(_WaitForGameObjectInvokeRoutine());
-            IEnumerator _WaitForGameObjectInvokeRoutine()
+
+            IEnumerable _WaitForGameObjectInvokeRoutine()
             {
                 yield return yieldInstructionFactory();
                 yieldedAction?.Invoke();
