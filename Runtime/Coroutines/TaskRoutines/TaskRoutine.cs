@@ -1,4 +1,4 @@
-﻿// Created By: "chomp" (https://forum.unity.com/members/chomp.29811/)
+// Created By: "chomp" (https://forum.unity.com/members/chomp.29811/)
 // Found At: https://forum.unity.com/threads/a-more-flexible-coroutine-interface.94220/
 // Pasted/Edited by: Julian Noel
 
@@ -297,7 +297,7 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
             IEnumerable WrapperFunc()
             {
                 action?.Invoke();
-                yield return null;
+                yield break;
             }
         }
 
@@ -806,6 +806,13 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
         /// <returns>A TaskRoutine that resolves once query == true and yieldedAction has been executed (if not null)</returns>
         public static TaskRoutine WaitUntil(Func<bool> query, Action yieldedAction=null)
         {
+            if(query == null) throw new ArgumentNullException("WaitUntil query predicate cannot be null");
+            if (query.Invoke())
+            {
+                //condition already met, return a taskroutine that will
+                //execute it without an awkward frame delay and immediately resolve.
+                return TaskRoutine.New(yieldedAction);
+            }
             return TaskRoutine.Wait(() => new WaitUntil(query), yieldedAction);
         }
 
@@ -817,6 +824,13 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
         /// <returns>A TaskRoutine that waits while query == true and resolves once query ==false and yieldedAction has been executed (if not null)</returns>
         public static TaskRoutine WaitWhile(Func<bool> query, Action yieldedAction=null)
         {
+            if(query == null) throw new ArgumentNullException("WaitWhile query predicate cannot be null");
+            if (!query.Invoke())
+            {
+                //condition already met, return a taskroutine that will
+                //execute it without an awkward frame delay and immediately resolve.
+                return TaskRoutine.New(yieldedAction);
+            }
             return TaskRoutine.Wait(() => new WaitWhile(query), yieldedAction);
         }
 
