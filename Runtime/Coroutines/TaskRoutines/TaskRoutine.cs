@@ -52,26 +52,49 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
         protected const string IENUMERATOR_DEPRECATION_WARNING =
             "When possible, use the IEnumerable overload instead of IEnumerator, " +
             "as IEnumerable routines support restarts and looping.";
+
+        internal TaskRoutineManager.TaskState innerTaskState;
+
         /// <summary>
         /// Returns true if and only if the coroutine is running.  Paused tasks
         /// are considered to be running.
         /// </summary>
-        public bool IsRunning => !Destroyed && innerTaskState.Running;
+        public virtual bool IsRunning => !Destroyed && innerTaskState.Running;
         
         ///<summary>
         ///Returns true if and only if the coroutine is currently paused.
         ///</summary>
-        public bool IsPaused => !Destroyed && innerTaskState.Paused;
+        public virtual bool IsPaused => !Destroyed && innerTaskState.Paused;
 
         ///<summary>
         /// Returns true if and only if the coroutine has successfully resolved.
         ///</summary>
-        public bool IsResolved => !Destroyed && innerTaskState.Resolved;
+        public virtual bool IsResolved => !Destroyed && innerTaskState.Resolved;
 
         ///<summary>
         /// Returns true if and only if the coroutine's execution has been cancelled.
         ///</summary>
-        public bool IsCancelled => Destroyed || innerTaskState.Cancelled;
+        public virtual bool IsCancelled => Destroyed || innerTaskState.Cancelled;
+
+        public virtual bool HasNeverBeenStarted => innerTaskState.HasNeverBeenStarted;
+
+        public virtual bool Destroyed { get; protected set; } = false;
+
+        /// <summary>
+        /// The TaskRoutine currently expected to run before this one
+        /// </summary>
+        public virtual TaskRoutine Previous { get; protected set; }
+
+        /// <summary>
+        /// The TaskRoutine currently expected to run after this one (not accurate on branching routine chains)
+        /// </summary>
+        [Obsolete("Deprecated. Inherently does NOT handle branching, be aware when using branching chains. Depend on Previous instead.")]
+        public virtual TaskRoutine Next { get; protected set; }
+
+        /// <summary>
+        /// Not guaranteed to be updated by all routines, but all at least provide a means
+        /// </summary>
+        public virtual float Progress {  get; set; }
 
         /// Delegate for termination subscribers.  manual is true if and only if
         /// the coroutine was stopped with an explicit call to Stop().
@@ -80,6 +103,23 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
 
         [Obsolete(IENUMERATOR_DEPRECATION_WARNING)]
         public delegate IEnumerator TaskRoutineFunc();
+
+        /// <summary>
+        /// Represents a function that RETURNS a <see cref="TaskRoutine"/> object, as opposed to a
+        /// regular TaskRoutine object.
+        /// These functions require special proxying in order to be chained, as OnFinish()
+        /// requires an immediate handle to later invoke, but a chained LatentTaskRoutineFunc
+        /// cannot be invoked during assignment without immediately invoking the logic leading up
+        /// to its internal return of a TaskRoutine object, instead of only executing the function after the previous one.
+        /// The non-static TaskRoutine.OnFinish() overloads are all built to enable chaining,
+        /// meaning the function has to return a reference to a taskroutine that resolves after
+        /// the TaskRoutine instance it was called from. This cannot be directly done with LatentTaskRoutineFuncs
+        ///
+        /// The OnFinish overload for these must create a TaskRoutineProxy,
+        /// a wrapper that will invoke a later given TaskRoutine ref, or await its arrival
+        /// Or otherwise return a special taskroutine
+        /// </summary>
+        public delegate TaskRoutine LatentTaskRoutineFunc();
 
         [Obsolete(IENUMERATOR_DEPRECATION_WARNING)]
         public delegate IEnumerator TaskResultFunc<T>(TaskResult<T> carriedResultRef);
@@ -91,28 +131,10 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
         /// Termination event.  Triggered when the coroutine completes execution.
         public event FinishedHandlerWithCancelCheck FinishedEvent;
 
-        TaskRoutineManager.TaskState innerTaskState;
 
         public static TaskRoutine Resolved => new TaskRoutine().Resolve();
         public static TaskRoutine Cancelled => new TaskRoutine().Cancel();
 
-        public bool HasNeverBeenStarted => innerTaskState.HasNeverBeenStarted;
-        public bool Destroyed { get; protected set; } = false;
-
-        /// <summary>
-        /// The TaskRoutine currently expected to run before this one
-        /// </summary>
-        public TaskRoutine Previous { get; protected set; }
-
-        /// <summary>
-        /// The TaskRoutine currently expected to run after this one
-        /// </summary>
-        public TaskRoutine Next { get; protected set; }
-
-        /// <summary>
-        /// Not guaranteed to be updated by all routines, but all at least provide a means
-        /// </summary>
-        public float Progress {  get; set; }
         
         // /// <summary>
         // /// A <see cref="TaskRoutine"/>, if created from an <see cref="IEnumerable"/>, will store it here
@@ -453,14 +475,14 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
         }
 
         /// <summary> Prematurely finishes execution of the coroutine at its next yield WITHOUT counting as a cancellation.</summary>
-        public TaskRoutine Resolve()
+        public virtual TaskRoutine Resolve()
         {
             innerTaskState.Resolve();
             return this;
         }
 
         /// <summary> Prematurely discontinues execution of the coroutine at its next yield as a cancellation.</summary>
-        public TaskRoutine Cancel()
+        public virtual TaskRoutine Cancel()
         {
             innerTaskState.Cancel(); 
             return this;
@@ -549,6 +571,19 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
         /// <param name="nextRoutine"></param>
         /// <param name="stillRunOnCancel"></param>
         /// <returns>nextRoutine, the same <see cref="TaskRoutine"/> you inputted, for convenience</returns>
+        /// <remarks>
+        /// Note: while multiple OnFinish() calls made from the same TaskRoutine will technically
+        /// execute in order, they will still be treated concurrently
+        ///<code>
+        /// var a = TaskRoutine.New(SomeProcess);
+        /// a.OnFinish(b);
+        /// a.OnFinish(c);
+        /// b.OnFinish(d);
+        /// c.OnFinish(e);
+        /// </code>
+        /// Will execute as a Starts -> b Starts -> c Starts
+        /// With routines b and c ultimately executing as concurrent TaskRoutine chains.
+        /// </remarks>
         public TaskRoutine OnFinish(TaskRoutine nextRoutine, bool stillRunOnCancel = false)
         {
             //rifle forward until you find the front of the given nextRoutine's existing thread, 
@@ -560,6 +595,14 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
 
             nextRoutine.Previous = this;
             this.Next = nextRoutine;
+            //TODO: Next doesn't handle branches well:
+            //a.OnFinish(b)
+            //b.OnFinish(c)
+            //b.OnFinish(d)
+            //seems fine at first - c and d will execute after b, in order, but b's flags now only think d comes after
+            //query - do we use or need Next? just Previous is enough to handle causality
+
+            //another note - d is NOT inserted between b and c
 
             this.OnFinish(wasCancelled =>
             {
@@ -600,6 +643,70 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
         {
             return OnFinish(New(routineFunc, false));
         }
+
+        /// <summary>
+        /// Use to chain a function that returns a <see cref="TaskRoutine"/> but can't immediately execute (a mix of synchronous and async instructions).
+        /// </summary>
+        /// <param name="routineFunc">Function to wrap in a proxy and execute within. Returns a <see cref="TaskRoutine"/> that will be embedded into the proxy that is immediately returned.</param>
+        /// <param name="stillRunOnCancel"></param>
+        /// <returns>A proxy <see cref="TaskRoutine"/> that will resolve or cancel when the <see cref="TaskRoutine"/> returned by the latent function does.</returns>
+        /// <remarks>
+        /// Experimental, but it PROBABLY works.
+        /// <br/>
+        /// Use at your own risk.
+        /// <br/>
+        /// It may be safer to just wrap your logic ahead of time.
+        /// </remarks>
+        [Obsolete("Experimental! Let me know if it works or if you have issues.")]
+        public TaskRoutine OnFinish(LatentTaskRoutineFunc routineFunc, bool stillRunOnCancel = false)
+        {
+            if (routineFunc == null) return this; //nothing to do then, return self and keep chaining.
+
+            //Boilerplate required; the original proxy needs be referenced within the coroutine.
+            TaskRoutine proxy = null;
+            proxy = New(Local_ProxyRoutine());
+            return OnFinish(proxy, stillRunOnCancel);
+
+            IEnumerable Local_ProxyRoutine()
+            {
+                //this guy only resolves once actual routine becomes both non-null and resolved
+                //this guy only cancels once actual routine becomes both non-null and resolved
+
+                //new problem - need cancellations to penetrate
+
+                //run the latent logic, which will do multiple things before returning a final
+                //task routine representing the end of its chain.
+                TaskRoutine actualRoutine = routineFunc.Invoke();
+                if (actualRoutine == null)
+                {
+                    yield return new ResolveTaskRoutine();
+                    yield break;
+                }
+
+                //start if not already started, for consistent behaviour.
+                if(actualRoutine.HasNeverBeenStarted) actualRoutine.Start();
+
+                //your IDE may be concerned about proxy being null - if this function was called
+                //before the proxy was assigned, it would be, but it isn't in this case.
+                //that's why we used New() instead of Start().
+
+                //embed the latent taskroutine into the proxy.
+                //This updates the inner state and coroutine to the new latent one,
+                //aggregates on-finished logic, and preserves the original
+                //proxy's reference so that external linkages are unaffected
+                //it also allows the proxy's original inner state and routine to be GC'd
+                proxy.EmbedState(actualRoutine);
+
+                //give it a cycle to allow the transfer to happen.
+                //need to ensure it executes the embedding in time.
+                yield return null;
+            }
+
+            //Register B -> Return B' -> Run A -> OnFinishedEvent Invoke -> Run B
+            //B': IEnumerator: Await proxy val != null -> Await proxy val != running -> handle resolve/canceled
+
+        }
+
         [Obsolete(IENUMERATOR_DEPRECATION_WARNING)]
         public TaskRoutine OnFinish(TaskRoutineFunc routineFunc, bool stillRunOnCancel = false)
         {
@@ -910,6 +1017,77 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
         }
         public static IEnumerable<TaskRoutine> StartAll(params TaskRoutine[] routines) => StartAll(routines);
 
-        
+        /// <summary>
+        /// Replaces this TaskRoutine's state object with another's, and aggregates their callbacks.
+        /// Generally used internally to handle latent routines.
+        /// </summary>
+        /// <param name="routine"></param>
+        public void EmbedState(TaskRoutine actualRoutine)
+        {
+            var incomingInnerState = actualRoutine.innerTaskState;
+
+            //can't externally wipe the event's subscriptions
+            //using this to ensure the original proxy routine's
+            //temporary resolver logic doesn't awkwardly trigger somehow
+            innerTaskState.ClearOnFinishedCallbacks();
+
+            //ensure the incoming routine's state completion additionally triggers any
+            //additional callbacks that were already added to the proxy instance.
+            //Result - on incoming's completion,
+            //both proxy's outer callbacks and incoming's outer callbacks will all fire.
+            //Null check in case it was destroyed
+            if(incomingInnerState != null)
+                incomingInnerState.FinishedEvent += (wasCan) => this.FinishedEvent?.Invoke(wasCan);
+
+            //if your new one was already destroyed, inherit that state
+            this.Destroyed |= actualRoutine.Destroyed;
+            //actual progress will be from the incoming, empty proxies cannot meaningfully progress.
+            this.Progress = actualRoutine.Progress;
+
+            //back trace to start of new chain,
+            TaskRoutine previousFromIncoming = actualRoutine;
+            while (previousFromIncoming.Previous != null)
+            {
+                previousFromIncoming = previousFromIncoming.Previous;
+            }
+            TaskRoutine startOfIncomingChain = previousFromIncoming;
+
+            //set that start's previous to be proxy's previous,
+            //connecting the latent incoming chain to the proxy's existing chain.
+            startOfIncomingChain.Previous = this.Previous;
+
+            //Similarly, pick up from where the end of the latent incoming chain left off.
+            //Note: we are assigning the previous values instead of this instance because
+            //the proxy is being supplanted, not appended.
+            //This is being done because we cannot easily/safely all the TaskRoutines
+            //that have set the proxy as their Previous, so we need to ensure that reference is maintained
+            //and stinky unsafe pointer manipulation doesn't quite work with managed objects.
+            this.Previous = actualRoutine.Previous;
+
+            //we don't have to worry about the other end -
+            //that's why we're embedding the new INTO the proxy instead of the other way around
+
+            //we keep the proxy wrapper's next - this ref is the end of its chain, so wrapper's next
+            //it's also deprecated anyway
+
+            //these inner task states are only referenced inside this class,
+            //so the old ref should get GC'd after this reassignment
+            innerTaskState = incomingInnerState;
+        }
     }
+
+    // /// <summary>
+    // /// Wraps another (often latent) taskroutine. This class enables the same interface to penetrate into the latent state.
+    // /// </summary>
+    // public class TaskRoutineProxy : TaskRoutine
+    // {
+    //     //routine wrapper
+    //
+    //     TaskRoutine wrappedRoutine;
+    //
+    //     public void Resolve(TaskRoutine routine)
+    //     {
+    //         innerTaskState = routine.innerTaskState;
+    //     }
+    // }
 }

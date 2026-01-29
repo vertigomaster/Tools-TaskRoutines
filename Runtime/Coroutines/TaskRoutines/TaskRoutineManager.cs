@@ -154,6 +154,15 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
                 
                 FinishedEvent?.Invoke(Cancelled);
             }
+
+            /// <summary>
+            /// Shuts down any existing connections to outer task routines.
+            /// Generally used when embedding a newly produced routine into a declared proxy.
+            /// </summary>
+            public void ClearOnFinishedCallbacks()
+            {
+                FinishedEvent = null;
+            }
         }
 
         static TaskRoutineManager singleton;
