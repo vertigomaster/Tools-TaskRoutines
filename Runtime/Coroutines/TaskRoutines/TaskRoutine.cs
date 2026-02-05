@@ -41,6 +41,7 @@ using System.Linq;
 using JetBrains.Annotations;
 // using IDEK.Tools.Logging;
 using UnityEngine;
+using UnityEngine.Events;
 
 namespace IDEK.Tools.Coroutines.TaskRoutines
 {
@@ -906,6 +907,50 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
         }
 
         /// <summary>
+        /// Returns a taskroutine that waits until the event fires before resolving (and optionally executing a callback)
+        /// </summary>
+        /// <param name="eventTrigger">an event that we are waiting on.</param>
+        /// <param name="yieldedAction">optional action to perform once query == true</param>
+        /// <returns>A TaskRoutine that resolves once query == true and yieldedAction has been executed (if not null)</returns>
+        public static TaskRoutine AwaitEvent(UnityEvent eventTrigger, Action yieldedAction=null)
+        {
+            if(eventTrigger == null) throw new ArgumentNullException("WaitUntil eventTrigger cannot be null");
+
+            bool eventFired = false;
+            eventTrigger.AddListener(Local_WaitOnceForEvent);
+            void Local_WaitOnceForEvent()
+            {
+                eventFired = true;
+                eventTrigger?.RemoveListener(Local_WaitOnceForEvent);
+            }
+
+            //not excellent, but just about as performant as WaitUntil() in general
+            return TaskRoutine.Wait(() => new WaitUntil(() => eventFired), yieldedAction);
+        }
+
+        /// <summary>
+        /// Returns a taskroutine that waits until the event fires before resolving (and optionally executing a callback)
+        /// </summary>
+        /// <param name="eventTrigger">an event that we are waiting on.</param>
+        /// <param name="yieldedAction">optional action to perform once query == true</param>
+        /// <returns>A TaskRoutine that resolves once query == true and yieldedAction has been executed (if not null)</returns>
+        public static TaskRoutine AwaitEvent(Action eventTrigger, Action yieldedAction=null)
+        {
+            if(eventTrigger == null) throw new ArgumentNullException("WaitUntil eventTrigger cannot be null");
+
+            bool eventFired = false;
+            eventTrigger += Local_WaitOnceForEvent;
+            void Local_WaitOnceForEvent()
+            {
+                eventFired = true;
+                eventTrigger -= Local_WaitOnceForEvent;
+            }
+
+            //not excellent, but just about as performant as WaitUntil() in general
+            return TaskRoutine.Wait(() => new WaitUntil(() => eventFired), yieldedAction);
+        }
+
+        /// <summary>
         /// Returns a taskroutine that waits until the query == true before resolving (and optionally executing a callback)
         /// </summary>
         /// <param name="query">a function that returns a boolean (presumably after repeatedly evaluating an expression</param>
@@ -948,18 +993,18 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
         /// <param name="yieldInstructionFactory"></param>
         /// <param name="yieldedAction"></param>
         /// <returns></returns>
-        protected static TaskRoutine Yield(Func<object> yieldInstructionFactory)
+        public static TaskRoutine Yield(Func<object> yieldInstructionFactory)
         {
-            return TaskRoutine.Start(_WaitForGameObjectInvokeRoutine());
+            return Start(_WaitForGameObjectInvokeRoutine());
             IEnumerable _WaitForGameObjectInvokeRoutine()
             {
                 yield return yieldInstructionFactory();
             }
         }
 
-        public TaskRoutine Yield(object yieldInstruction)
+        public static TaskRoutine Yield(object yieldInstruction)
         {
-            return TaskRoutine.Yield(() => yieldInstruction);
+            return Yield(() => yieldInstruction);
         }
         
         /// <summary>
