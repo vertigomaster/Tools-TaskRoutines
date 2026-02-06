@@ -609,6 +609,13 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
             {
                 if(nextRoutine != null)
                 {
+                    if (!nextRoutine.HasNeverBeenStarted)
+                    {
+                        Debug.LogError("[TaskRoutine.OnFinish] The next routine has been started prematurely! " +
+                             "routines given to OnFinish() should not be prematurely started.\n " +
+                             "Otherwise they won't actually trigger when the first one finishes, which will be very confusing " +
+                             "and almost certainly not what you intended!");
+                    }
                     nextRoutine.Start();
                 }
                 else
@@ -666,10 +673,12 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
             //Boilerplate required; the original proxy needs be referenced within the coroutine.
             TaskRoutine proxy = null;
             proxy = New(Local_ProxyRoutine());
+            // Debug.Log("[TaskRoutine.OnFinish(latent)] - fooble - about to return proxy taskroutine");
             return OnFinish(proxy, stillRunOnCancel);
 
             IEnumerable Local_ProxyRoutine()
             {
+                // Debug.Log("[TaskRoutine.OnFinish(latent)] - fooble - started proxy routine");
                 //this guy only resolves once actual routine becomes both non-null and resolved
                 //this guy only cancels once actual routine becomes both non-null and resolved
 
@@ -678,14 +687,25 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
                 //run the latent logic, which will do multiple things before returning a final
                 //task routine representing the end of its chain.
                 TaskRoutine actualRoutine = routineFunc.Invoke();
+                // Debug.Log("[TaskRoutine.OnFinish(latent)] - fooble - invoked latent function, receiving routine...");
                 if (actualRoutine == null)
                 {
+                    // Debug.Log("[TaskRoutine.OnFinish(latent)] - fooble - latent func did not return a routine, resolving immediately");
                     yield return new ResolveTaskRoutine();
                     yield break;
                 }
+                // Debug.Log("[TaskRoutine.OnFinish(latent)] - fooble - received valid taskroutine from latent func");
 
                 //start if not already started, for consistent behaviour.
-                if(actualRoutine.HasNeverBeenStarted) actualRoutine.Start();
+                if (actualRoutine.HasNeverBeenStarted)
+                {
+                    actualRoutine.Start();
+                    // Debug.Log("[TaskRoutine.OnFinish(latent)] - fooble - started real routine since it hasn't been started");
+                }
+                // else
+                // {
+                //     Debug.Log("[TaskRoutine.OnFinish(latent)] - fooble - the taskroutine from the latent func has already started");
+                // }
 
                 //your IDE may be concerned about proxy being null - if this function was called
                 //before the proxy was assigned, it would be, but it isn't in this case.
@@ -698,9 +718,12 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
                 //it also allows the proxy's original inner state and routine to be GC'd
                 proxy.EmbedState(actualRoutine);
 
+                // Debug.Log("[TaskRoutine.OnFinish(latent)] - fooble - embedded true routine into the proxy");
                 //give it a cycle to allow the transfer to happen.
                 //need to ensure it executes the embedding in time.
                 yield return null;
+
+                // Debug.Log("[TaskRoutine.OnFinish(latent)] - fooble - completing proxy routine");
             }
 
             //Register B -> Return B' -> Run A -> OnFinishedEvent Invoke -> Run B
@@ -903,7 +926,8 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
             return OnFinish(TaskRoutine.Yield(
                 () => realtime ? 
                     new WaitForSecondsRealtime(delayTime) : 
-                    new WaitForSeconds(delayTime)));
+                    new WaitForSeconds(delayTime),
+                autoStart:false));
         }
 
         /// <summary>
@@ -916,10 +940,13 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
         {
             if(eventTrigger == null) throw new ArgumentNullException("WaitUntil eventTrigger cannot be null");
 
+            Debug.Log("[TaskRoutine.AwaitEvent()] - fooble - entered");
+
             bool eventFired = false;
             eventTrigger.AddListener(Local_WaitOnceForEvent);
             void Local_WaitOnceForEvent()
             {
+                Debug.Log("[TaskRoutine.AwaitEvent()] - fooble - registered event fired");
                 eventFired = true;
                 eventTrigger?.RemoveListener(Local_WaitOnceForEvent);
             }
@@ -993,18 +1020,18 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
         /// <param name="yieldInstructionFactory"></param>
         /// <param name="yieldedAction"></param>
         /// <returns></returns>
-        public static TaskRoutine Yield(Func<object> yieldInstructionFactory)
+        public static TaskRoutine Yield(Func<object> yieldInstructionFactory, bool autoStart)
         {
-            return Start(_WaitForGameObjectInvokeRoutine());
+            return New(_WaitForGameObjectInvokeRoutine(), autoStart);
             IEnumerable _WaitForGameObjectInvokeRoutine()
             {
                 yield return yieldInstructionFactory();
             }
         }
 
-        public static TaskRoutine Yield(object yieldInstruction)
+        public static TaskRoutine Yield(object yieldInstruction, bool autoStart)
         {
-            return Yield(() => yieldInstruction);
+            return Yield(() => yieldInstruction, autoStart);
         }
         
         /// <summary>
