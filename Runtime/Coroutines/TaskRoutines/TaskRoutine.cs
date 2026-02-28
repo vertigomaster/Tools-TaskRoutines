@@ -985,12 +985,12 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
         /// <returns>A TaskRoutine that resolves once query == true and yieldedAction has been executed (if not null)</returns>
         public static TaskRoutine WaitUntil(Func<bool> query, Action yieldedAction=null)
         {
-            if(query == null) throw new ArgumentNullException("WaitUntil query predicate cannot be null");
+            if(query == null) throw new ArgumentNullException(nameof(query), "WaitUntil query predicate cannot be null");
             if (query.Invoke())
             {
                 //condition already met, return a taskroutine that will
                 //execute it without an awkward frame delay and immediately resolve.
-                return TaskRoutine.New(yieldedAction);
+                return TaskRoutine.Start(yieldedAction); //these are static so they are used to start chains
             }
             return TaskRoutine.Wait(() => new WaitUntil(query), yieldedAction);
         }
@@ -1003,12 +1003,12 @@ namespace IDEK.Tools.Coroutines.TaskRoutines
         /// <returns>A TaskRoutine that waits while query == true and resolves once query ==false and yieldedAction has been executed (if not null)</returns>
         public static TaskRoutine WaitWhile(Func<bool> query, Action yieldedAction=null)
         {
-            if(query == null) throw new ArgumentNullException("WaitWhile query predicate cannot be null");
+            if(query == null) throw new ArgumentNullException(nameof(query), "WaitWhile query predicate cannot be null");
             if (!query.Invoke())
             {
                 //condition already met, return a taskroutine that will
                 //execute it without an awkward frame delay and immediately resolve.
-                return TaskRoutine.New(yieldedAction);
+                return TaskRoutine.Start(yieldedAction); //these are static so they are used to start chains
             }
             return TaskRoutine.Wait(() => new WaitWhile(query), yieldedAction);
         }
